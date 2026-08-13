@@ -1,13 +1,17 @@
 package com.portfolio.tracker.bootstrap;
 
 import com.portfolio.tracker.model.Fund;
+import com.portfolio.tracker.model.Valuation;
 import com.portfolio.tracker.model.Commitment;
 import com.portfolio.tracker.model.CashFlow;
 import com.portfolio.tracker.repository.FundRepository;
 import com.portfolio.tracker.repository.CommitmentRepository;
 import com.portfolio.tracker.repository.CashFlowRepository;
+import com.portfolio.tracker.repository.ValuationRepository;
+import com.portfolio.tracker.service.PerformanceService;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
+
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -16,15 +20,21 @@ import java.util.Arrays;
 @Component
 public class DataSeeder implements CommandLineRunner {
     
+    private final ValuationRepository valuationRepository;
     private final FundRepository fundRepository;
     private final CommitmentRepository commitmentRepository;
     private final CashFlowRepository cashFlowRepository;
+    private final PerformanceService performanceService;
 
     // Injecting all three required repositories
-    public DataSeeder(FundRepository fundRepository, CommitmentRepository commitmentRepository, CashFlowRepository cashFlowRepository) {
+    public DataSeeder(FundRepository fundRepository, CommitmentRepository commitmentRepository, 
+                      CashFlowRepository cashFlowRepository, ValuationRepository valuationRepository,
+                      PerformanceService performanceService) {
         this.fundRepository = fundRepository;
         this.commitmentRepository = commitmentRepository;
         this.cashFlowRepository = cashFlowRepository;
+        this.valuationRepository = valuationRepository;
+        this.performanceService = performanceService;
     }
 
     @Override
@@ -61,6 +71,14 @@ public class DataSeeder implements CommandLineRunner {
 
         cashFlowRepository.saveAll(Arrays.asList(call1, call2, distribution1));
 
-        System.out.println("DATABASE SEEDED: Fake fund, commitment, and cash flows injected successfully.");
+        Valuation q3Valuation = new Valuation();
+        q3Valuation.setCommitment(myCommitment);
+        q3Valuation.setReportDate(LocalDate.of(2024, 9, 30));
+        q3Valuation.setNavAmount(new BigDecimal("5000000")); 
+        valuationRepository.save(q3Valuation);
+
+        System.out.println("injected successfully.");
+        BigDecimal moic = performanceService.calculateMOIC(myCommitment.getId());
+        System.out.println("MOIC " + moic + "x");
     }
 }
