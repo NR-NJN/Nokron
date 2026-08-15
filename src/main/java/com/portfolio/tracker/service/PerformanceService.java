@@ -6,12 +6,15 @@ import com.portfolio.tracker.model.Valuation;
 import com.portfolio.tracker.repository.CashFlowRepository;
 import com.portfolio.tracker.repository.CommitmentRepository;
 import com.portfolio.tracker.repository.ValuationRepository;
+import com.portfolio.tracker.util.MathUtils;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+
 
 @Service
 public class PerformanceService {
@@ -55,5 +58,27 @@ public class PerformanceService {
         }   
         BigDecimal totalValue = totalDistributions.add(currentNav);  
         return totalValue.divide(totalPaidIn, 2, RoundingMode.HALF_UP);
+    }
+
+    public double calculateIRR(Long commitmentId) {
+        List<CashFlow> cashFlows = cashFlowRepository.findByCommitmentIdOrderByDateAsc(commitmentId);
+        Optional<Valuation> recentValuation = valuationRepository.findTopByCommitmentIdOrderByReportDateDesc(commitmentId);
+
+        int size = cashFlows.size() + (recentValuation.isPresent() ? 1 : 0);
+        double[] amounts = new double[size];
+        LocalDate[] dates = new LocalDate[size];
+
+        int index = 0;
+        for (CashFlow cf : cashFlows) {
+            amounts[index] = cf.getAmount().doubleValue();
+            dates[index] = cf.getDate();
+            index++;
+        }
+
+        if (recentValuation.isPresent()) {
+            amounts[index] = recentValuation.get().getNavAmount().doubleValue();
+            dates[index] = recentValuation.get().getReportDate();
+        }
+        return MathUtils.calculateXIRR(amounts, dates) * 100.0;
     }
 }
