@@ -1,7 +1,6 @@
 package com.portfolio.tracker.service;
 
 import com.portfolio.tracker.model.CashFlow;
-import com.portfolio.tracker.model.Commitment;
 import com.portfolio.tracker.model.Valuation;
 import com.portfolio.tracker.repository.CashFlowRepository;
 import com.portfolio.tracker.repository.CommitmentRepository;
@@ -23,7 +22,7 @@ public class PerformanceService {
     private final CashFlowRepository cashFlowRepository;
     private final ValuationRepository valuationRepository;
 
-    public PerformanceService(CommitmentRepository commitmentRepository, 
+    public PerformanceService(CommitmentRepository commitmentRepository,
                               CashFlowRepository cashFlowRepository,
                               ValuationRepository valuationRepository) {
         this.commitmentRepository = commitmentRepository;
@@ -31,53 +30,73 @@ public class PerformanceService {
         this.valuationRepository = valuationRepository;
     }
 
-    public BigDecimal calculateMOIC(Long commitmentId) {
-         
+    private record Snapshot(List<CashFlow> cashFlows, BigDecimal nav, LocalDate asOf) {}
+
+    // NAV statements lag cash flows, so the latest reported NAV is rolled forward to the last
+    // cash flow date: calls after the report date add to NAV, distributions after it come out of it.
+    // NAV is floored at zero because distributions can exceed the stale carrying value when an
+    // asset is sold above its mark; the excess is already captured as realised cash.
+    private Snapshot snapshot(Long commitmentId) {
         List<CashFlow> cashFlows = cashFlowRepository.findByCommitmentIdOrderByDateAsc(commitmentId);
-        BigDecimal totalPaidIn = BigDecimal.ZERO;
-        BigDecimal totalDistributions = BigDecimal.ZERO;
-     
+        Optional<Valuation> latest = valuationRepository.findTopByCommitmentIdOrderByReportDateDesc(commitmentId);
+
+        if (latest.isEmpty()) {
+            LocalDate asOf = cashFlows.isEmpty() ? null : cashFlows.getLast().getDate();
+            return new Snapshot(cashFlows, BigDecimal.ZERO, asOf);
+        }
+
+        Valuation valuation = latest.get();
+        BigDecimal nav = valuation.getNavAmount();
+        LocalDate asOf = valuation.getReportDate();
         for (CashFlow cf : cashFlows) {
-            if ("CALL".equalsIgnoreCase(cf.getType())) {
-                 
-                totalPaidIn = totalPaidIn.add(cf.getAmount().abs());
-            } else if ("DISTRIBUTION".equalsIgnoreCase(cf.getType())) {
-                totalDistributions = totalDistributions.add(cf.getAmount());
+            if (cf.getDate().isAfter(valuation.getReportDate())) {
+                nav = nav.subtract(cf.getSignedAmount());
+                asOf = cf.getDate();
             }
         }
-   
+        return new Snapshot(cashFlows, nav.max(BigDecimal.ZERO), asOf);
+    }
+
+    public BigDecimal calculateMOIC(Long commitmentId) {
+        Snapshot snapshot = snapshot(commitmentId);
+        BigDecimal totalPaidIn = BigDecimal.ZERO;
+        BigDecimal totalDistributions = BigDecimal.ZERO;
+
+        for (CashFlow cf : snapshot.cashFlows()) {
+            if (cf.getType().isContribution()) {
+                totalPaidIn = totalPaidIn.add(cf.getAmount().abs());
+            } else {
+                totalDistributions = totalDistributions.add(cf.getAmount().abs());
+            }
+        }
+
         if (totalPaidIn.compareTo(BigDecimal.ZERO) == 0) {
             return BigDecimal.ZERO;
         }
 
-        BigDecimal currentNav = BigDecimal.ZERO; 
-        
-        Optional<Valuation> recentValuation = valuationRepository.findTopByCommitmentIdOrderByReportDateDesc(commitmentId);
-        if (recentValuation.isPresent()) {
-            currentNav = recentValuation.get().getNavAmount();
-        }   
-        BigDecimal totalValue = totalDistributions.add(currentNav);  
+        BigDecimal totalValue = totalDistributions.add(snapshot.nav());
         return totalValue.divide(totalPaidIn, 2, RoundingMode.HALF_UP);
     }
 
     public double calculateIRR(Long commitmentId) {
-        List<CashFlow> cashFlows = cashFlowRepository.findByCommitmentIdOrderByDateAsc(commitmentId);
-        Optional<Valuation> recentValuation = valuationRepository.findTopByCommitmentIdOrderByReportDateDesc(commitmentId);
+        Snapshot snapshot = snapshot(commitmentId);
+        List<CashFlow> cashFlows = snapshot.cashFlows();
+        boolean hasNav = snapshot.nav().signum() > 0;
 
-        int size = cashFlows.size() + (recentValuation.isPresent() ? 1 : 0);
+        int size = cashFlows.size() + (hasNav ? 1 : 0);
         double[] amounts = new double[size];
         LocalDate[] dates = new LocalDate[size];
 
         int index = 0;
         for (CashFlow cf : cashFlows) {
-            amounts[index] = cf.getAmount().doubleValue();
+            amounts[index] = cf.getSignedAmount().doubleValue();
             dates[index] = cf.getDate();
             index++;
         }
 
-        if (recentValuation.isPresent()) {
-            amounts[index] = recentValuation.get().getNavAmount().doubleValue();
-            dates[index] = recentValuation.get().getReportDate();
+        if (hasNav) {
+            amounts[index] = snapshot.nav().doubleValue();
+            dates[index] = snapshot.asOf();
         }
         return MathUtils.calculateXIRR(amounts, dates) * 100.0;
     }

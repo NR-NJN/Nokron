@@ -4,6 +4,7 @@ import com.portfolio.tracker.model.Fund;
 import com.portfolio.tracker.model.Valuation;
 import com.portfolio.tracker.model.Commitment;
 import com.portfolio.tracker.model.CashFlow;
+import com.portfolio.tracker.model.CashFlowType;
 import com.portfolio.tracker.repository.FundRepository;
 import com.portfolio.tracker.repository.CommitmentRepository;
 import com.portfolio.tracker.repository.CashFlowRepository;
@@ -55,19 +56,19 @@ public class DataSeeder implements CommandLineRunner {
         call1.setCommitment(myCommitment);
         call1.setDate(LocalDate.of(2021, 1, 15));
         call1.setAmount(new BigDecimal("-2000000"));
-        call1.setType("CALL");
+        call1.setType(CashFlowType.CALL);
 
         CashFlow call2 = new CashFlow();
         call2.setCommitment(myCommitment);
         call2.setDate(LocalDate.of(2022, 6, 1));
         call2.setAmount(new BigDecimal("-3000000"));
-        call2.setType("CALL");
+        call2.setType(CashFlowType.CALL);
 
         CashFlow distribution1 = new CashFlow();
         distribution1.setCommitment(myCommitment);
         distribution1.setDate(LocalDate.of(2024, 12, 1));
         distribution1.setAmount(new BigDecimal("8000000"));
-        distribution1.setType("DISTRIBUTION");
+        distribution1.setType(CashFlowType.DISTRIBUTION);
 
         cashFlowRepository.saveAll(Arrays.asList(call1, call2, distribution1));
 
@@ -80,5 +81,6 @@ public class DataSeeder implements CommandLineRunner {
         System.out.println("injected successfully.");
         BigDecimal moic = performanceService.calculateMOIC(myCommitment.getId());
         System.out.println("MOIC " + moic + "x");
+        System.out.println("IRR " + performanceService.calculateIRR(myCommitment.getId()) + "%");
     }
 }

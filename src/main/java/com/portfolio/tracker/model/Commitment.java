@@ -1,14 +1,18 @@
 package com.portfolio.tracker.model;
 
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.Setter;
+import lombok.ToString;
 import java.util.List;
 import java.math.BigDecimal;
 
 
 @Entity
-@Data
+@Getter
+@Setter
+@ToString
 @NoArgsConstructor
 
 public class Commitment{
@@ -17,9 +21,11 @@ public class Commitment{
     private Long id;
     private BigDecimal commitmentAmount;
     @ManyToOne
-    @JoinColumn(name = "fund_id", nullable = false) 
+    @JoinColumn(name = "fund_id", nullable = false)
+    @ToString.Exclude
     private Fund fund;
 
     @OneToMany(mappedBy = "commitment", cascade = CascadeType.ALL)
+    @ToString.Exclude
     private List<CashFlow> cashFlows;
 }
